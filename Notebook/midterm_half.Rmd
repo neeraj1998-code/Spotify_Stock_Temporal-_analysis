@@ -1,0 +1,203 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(XML)
+library(zoo)
+library(xts)
+library(readxl)
+library(lubridate)
+library(forecast)
+library(smooth)
+library(imputeTS)
+library(fpp3)
+library(summarytools)
+library(fpp3)
+setwd("/Users/sanyamkakkar/Desktop/Spring/603/HW2")
+```
+
+
+#Problem 3
+
+```{r}
+shampoo=read_csv('ShampooSales.csv')
+shampoo
+```
+#3.1: Plot is shown below
+```{r}
+shampoo_sales=ts(shampoo$`Shampoo Sales` ,start = c(1995, 1), end = c(1997, 12),frequency=12)
+plot(shampoo_sales,xlab = "Months", ylab = "Sales")
+```
+```{r}
+decompose_beer = decompose(shampoo_sales, "additive")
+decompose_beer
+```
+
+
+#3.2 As there is trend and seasonality so it will follow Holt's Winter Method
+#3.3 Moving average,Simple exponential smoothing,Double exponential smoothing may have high biased as it will not capture all the components of a dataset
+# and Winter holt method might overfit the data which means high variance.
+
+```{r}
+nValid<-12
+nTrain<-length(shampoo_sales)-nValid
+train.ts<-window(shampoo_sales,start=c(1995,1),end=c(1995,nTrain))
+valid.ts<-window(shampoo_sales,start=c(1995,nTrain+1),end=c(1995,nTrain+nValid))
+
+
+
+ma.trailing<-rollmean(train.ts,k=4,align ="right")
+last.ma<-tail(ma.trailing,1)
+
+
+
+ma.trailing.pred<-ts(rep(last.ma,nValid),freq=12,start=c(1997,1))
+ma.trailing.pred
+```
+
+
+```{r}
+accuracy(ma.trailing.pred,valid.ts)
+
+```
+#simple Exponential smoothening
+```{r}
+
+hwin=ets(train.ts, model = "ZNN")
+hwin
+
+hwin_pred <- forecast(hwin, h = nValid,level=0)
+accuracy(hwin_pred,valid.ts)
+```
+```{r}
+hwin2=ets(train.ts, model = "AAN")
+hwin2
+
+hwin_pred2 <- forecast(hwin2, h = nValid,level=0)
+accuracy(hwin_pred2,valid.ts)
+```
+```{r}
+hwin3=ets(train.ts, model = "AAA")
+hwin3
+
+hwin_pred3 <- forecast(hwin3, h = nValid,level=0)
+accuracy(hwin_pred3,valid.ts)
+```
+
+
+#Problem4
+```{r}
+global=global_economy%>% filter(Country == "Argentina")
+global
+```
+#4.1:Plot is shown below
+```{r}
+export=ts(global$Exports ,start = c(1960, 1),frequency=1)
+autoplot(export)
+```
+#4.2
+```{r}
+nValid2<-10
+nTrain2=length(export)-nValid2
+train2.ts<-window(export,start=c(1960,1),end=c(1960,nTrain2))
+valid2.ts<-window(export,start=c(1960,nTrain+1),end=c(1960,nTrain2+nValid2))
+
+```
+
+
+```{r}
+fit1=ets(train2.ts, model = "ANN")
+pred1 <- forecast(fit1, h = nValid2,level=0)
+plot(pred1)
+```
+#4.3
+```{r}
+accuracy(pred1,valid2.ts)
+```
+#RMSE value is 7.74
+
+#4.4
+```{r}
+fit2=ets(train2.ts, model = "AAN")
+pred2 <- forecast(fit2, h = nValid2,level=0)
+autoplot(pred2)
+```
+```{r}
+accuracy(pred2,valid2.ts)
+```
+#As ANN RMSE value is smaller so we should go with simple model
+#ANN is simpler method while AAN can capture both error and trend therfore It can give good results with trend data.The computational time for ANN would be less
+
+
+#4.5
+```{r}
+fit3=ets(train2.ts, model = "ZZZ")
+fit3
+pred3 <- forecast(fit3, h = nValid2,level=0)
+autoplot(pred3)
+```
+
+#Only the error term is included in the fit becasue the dataset has no seasonality and trend
+
+#Problem6
+#6.1
+```{r}
+library(fpp3)
+souvenirs
+autoplot(souvenirs)
+s2=souvenirs%>%mutate(log(souvenirs$Sales))%>% select(-Sales)
+
+```
+#There is trend and seasonlity in the plot,While trend look like exponential .
+
+#6.2
+#As the plot look like exponential so we can take log function to convert into simple graph thus can help in modeling the data easily with less computational time.
+
+#6.3
+```{r}
+sales=s2 %>%
+  mutate(festival = month(Month) == 3 & year(Month) != 1987)
+
+
+
+sales.ts <- ts(sales,start=c(1987,1),frequency = 12)
+sales.ts 
+```
+
+
+```{r}
+sales_fit <-as_tsibble(sales.ts)%>%model(lm = TSLM(sales.ts$log(souvenirs$Sales) ~ trend() + season()))
+
+```
+```{r}
+autoplot(sales_fit %>% residuals())
+```
+```{r}
+acf(sales_fit %>% residuals(), type="correlation")
+```
+
+#As the residual plot show sinasoidal function so we can model the trend according to sin or cosine.
+
+
+```{r}
+pred2<-forecast(sales_fit ,h=12,level=0)
+```
+
+
+#
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+

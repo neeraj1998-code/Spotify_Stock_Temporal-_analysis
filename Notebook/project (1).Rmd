@@ -1,0 +1,457 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(XML)
+library(zoo)
+library(xts)
+library(lubridate)
+library(forecast)
+library(smooth)
+library(imputeTS)
+library(fpp3)
+library(summarytools)
+library(readxl)
+```
+
+
+
+```{r}
+library(tsibble)
+setwd("/Users/sanyamkakkar/Desktop/Spring/603/HW2")
+```
+
+
+
+```{r}
+crude <- read.csv("crudeoil.csv")
+
+
+#crude.tsibble <- crude %>%mutate(Date = as.Date(crude$Date, "%m/%d/%y")) %>%as_tsibble(index=Date)
+
+crude
+#length(crude)
+crude$Date <-as.factor(crude$Date)
+crude$Date <-strptime(crude$Date ,format="%Y-%m-%d") #defining what is the original format of your date
+crude$Date <-as.Date(crude$Date,format="%Y-%m-%d")
+crude
+
+Crude1 <- crude %>% select(Date, Open, High, Low, Close, Adj.Close, Volume)
+Crude1
+
+
+crude.ts=ts(crude$Close, start = 1, end = 5424, frequency = 1)
+
+crude1_tsbl <- as_tsibble(Crude1, index = Date)
+crude1_tsbl
+
+plot(crude.ts)
+```
+```{r}
+# decomp <- decompose(crude.ts)
+# plot(decomp)
+```
+
+
+
+```{r}
+# pass_ar_model <- auto.arima(crude)
+# pass_ar_model
+```
+
+
+```{r}
+par(mfrow = c(1, 2))
+acf(crude.ts, lag.max = 25)
+pacf(crude.ts, lag.max = 25)
+```
+```{r}
+
+
+
+
+
+valid=1085
+
+
+
+train3.ts<-window(crude.ts,start=c(1),end=c(5424-valid))
+valid3.ts<-window(crude.ts,start=c(5424-valid),end=c(5424))
+
+```
+
+```{r}
+
+```
+
+
+
+
+```{r}
+
+
+
+library(fpp)
+h <- 5
+train <- window(crude.ts,end=c(5424-valid))
+test <- window(crude.ts,start=c(5424-valid+1))
+n <- length(test) - h + 1
+fit <- auto.arima(train)
+fc <- ts(numeric(n), start=c(5424-valid+1)+(h-1), freq=1)
+
+length(fc)
+for(i in 1:2)
+{  
+  x <- window(crude.ts, end=c(5424-valid) + (i-1))
+  refit <- Arima(x, model=fit)
+  fc[i] <- forecast(refit, h=h)$mean[h]
+  print(length(fc[i]))
+  
+  
+  
+}
+fc
+
+accuracy(fc,valid3.ts)
+
+
+
+```
+
+```{r}
+ library(RcppRoll)
+
+crude1_tsbl$lag3 <- roll_mean(crude1_tsbl$Close, n = 3, align = "right", fill = NA)
+crude1_tsbl$lag4 <- roll_mean(crude1_tsbl$Close, n = 4, align = "right", fill = NA)
+crude1_tsbl$lag5 <- roll_mean(crude1_tsbl$Close, n = 5, align = "right", fill = NA)
+crude1_tsbl$lag6 <- roll_mean(crude1_tsbl$Close, n = 6, align = "right", fill = NA)
+crude1_tsbl$lag7 <- roll_mean(crude1_tsbl$Close, n = 7, align = "right", fill = NA)
+
+
+
+train_xts = crude1_tsbl[1:4500,] #Covid
+test_xts = crude1_tsbl[4501:5424,]
+
+train <- crude1_tsbl[1:(0.8*length(crude1_tsbl))]
+
+test <- crude1_tsbl[(0.8*length(crude1_tsbl)+1):length(crude1_tsbl)]
+```
+
+```{r}
+
+
+
+h <- 5
+train_xts = crude1_tsbl[1:4500,] #Covid
+test_xts = crude1_tsbl[4501:5424,]
+n <- length(test) - h + 1
+fit <- naive(train_xts$Close, h=length(test_xts$Close))
+fc <- ts(numeric(n), start=c(4501)+(h-1), freq=1)
+
+for(i in 1:n)
+{  
+  x <- window(crude1_tsbl$Close,end=c(4500+ i-1))
+  refit <- naive(x, model=fit)
+  fc[i] <- forecast(refit, h=h)$mean[h]
+  
+  
+  
+  
+}
+
+
+#forecast_naive_covid<- naive(train_xts$lag3, h=length(test_xts))
+accuracy(forecast_naive_covid, test_xts)
+```
+
+
+
+
+```{r}
+smarket.lr <-lm( train$Open~ lag1 + lag2+lag3 , data = train)
+summary(smarket.lr)
+```
+
+
+Linear Trend
+```{r}
+
+line_reg=TSLM(train ~ lag1)
+plot(line_reg$train())
+summary(line_reg)
+```
+
+Quad Trend
+```{r}
+line_reg1=tslm(train3.ts ~ trend + I(trend^2))
+plot(line_reg1$residuals)
+summary(line_reg1)
+
+```
+Cubic Trend
+```{r}
+line_reg2=tslm(train3.ts ~ trend + I(trend^2) + I(trend^3))
+plot(line_reg2$residuals)
+summary(line_reg2)
+
+```
+* Trend
+```{r}
+line_reg3=tslm(train3.ts ~ trend + I(trend^2) + I(trend^3) + I(trend^4) + I(trend^5))
+plot(line_reg3$residuals)
+summary(line_reg3)
+
+accuracy(line_reg3$fitted.values,train3.ts)
+```
+```{r}
+par(mfrow = c(1, 2))
+acf(line_reg3$residuals, lag.max = 50)
+pacf(line_reg3$residuals, lag.max = 50)
+hist(line_reg3$residuals, breaks = 25)
+```
+```{r}
+diff_res <- diff(line_reg3$residuals, 1)
+plot (diff_res)
+```
+```{r}
+par(mfrow = c(1, 2))
+acf(diff_res, lag.max = 50)
+pacf(diff_res, lag.max = 50)
+hist(diff_res, breaks = 5)
+```
+```{r}
+arima_model <- auto.arima(diff_res)
+summary(arima_model)
+```
+
+
+```{r}
+line_reg3.pred <- forecast(line_reg3, h = 1085)
+line_reg3.pred
+
+accuracy(line_reg3$fitted.values,train3)
+```
+```{r}
+arima_model.pred <- forecast(arima_model, h =1085)
+arima_model.pred
+
+plot(arima_model.pred)
+lines(valid3.ts)
+```
+
+```{r}
+added_value <- line_reg3.pred$mean + arima_model.pred$mean  
+added_value
+plot(added_value)
+lines(valid3.ts)
+```
+```{r}
+accuracy(line_reg3.pred$mean, valid3.ts)
+plot(line_reg3.pred)
+lines(valid3.ts)
+```
+
+
+
+```{r}
+accuracy(added_value, valid3.ts)
+```
+
+
+
+
+
+```{r}
+# line_reg.fitted <- fitted (line_reg)
+# #line_reg.fitted
+# 
+# line_reg.residual <- train3.ts - line_reg.fitted
+# #line_reg.residual
+# hist(line_reg.residual, breaks = 70)
+```
+
+
+
+
+
+```{r}
+library(tensorflow)
+library(keras)
+library(magrittr) # needs to be run every time you start R and want to use %>%
+library(dplyr)
+```
+```{r}
+
+
+get_xy<-function(tsdata,NP)
+{
+  N <- length(tsdata)
+  x<-matrix(nrow=N-NP,ncol=NP)
+  y<-rep(0,N-NP)
+  for (i in 1:(N-NP))
+  {
+    x[i,1:NP]<-as.numeric(tsdata[i:(i+NP-1)])
+    y[i]<-as.numeric(tsdata[i+NP])
+  }
+  return(list(x,y))
+}
+train3.ts=scale(train3.ts)
+```
+
+
+```{r}
+acc=matrix(0,26,26)
+for (i in 25:26) {
+  for (j in 25:26){
+     a=get_xy(train3.ts,i)
+train.x=a[[1]]
+train.y=a[[2]]
+
+a2<-get_xy(valid3.ts,i)
+test.x<-a2[[1]];
+test.y<-a2[[2]];
+
+model2 <- keras_model_sequential() %>%    
+  layer_dense(units = 128, activation ="relu",input_shape = ncol(i)) %>%    
+  layer_dropout(rate = 0.2) %>% 
+  layer_dense(units = 32, activation = "relu") %>%  
+   layer_dropout(rate = 0.2) %>% 
+#  layer_dense(units = 64)%>%
+  #layer_dense(units = 32)%>%
+  layer_dense(units = 1)
+model2 %>% compile(    
+  optimizer = "rmsprop",  
+  loss = "mse",    
+  metrics = c("mae")  )
+early_stop<-callback_early_stopping(monitor="loss",patience=200)
+history<-model2%>% fit(train.x,train.y,
+                      epochs=10,
+                      batch_size =j, #697,
+                      callbacks=list(early_stop),
+                      validation_split=0.3,
+                      #validation_data = list(test.x, test.y),
+                      verbose=1)
+DLTrain_Pred<-model2%>%predict(train.x)
+DLPred<-model2%>%predict(test.x)
+acc[i,]=accuracy(DLPred[,1],test.y)[5]
+
+    j=j+1
+  }
+ 
+
+
+
+i=i+1
+}
+
+
+acc
+
+```
+
+For lag 16 I am getting good results
+```{r}
+
+```
+```{r}
+
+```
+
+
+#gettting best result at lag 16 and batch size 27
+```{r}
+class(train3.ts)
+a=get_xy(train3.ts,16)
+a
+train.x=a[[1]]
+train.y=a[[2]]
+
+a2<-get_xy(valid3.ts,16)
+test.x<-a2[[1]];
+test.y<-a2[[2]];
+
+model2 <- keras_model_sequential() %>%    
+  layer_dense(units = 128, activation ="relu",input_shape = ncol(16)) %>%    
+  layer_dropout(rate = 0.2) %>% 
+  layer_dense(units = 32, activation = "relu") %>%  
+   layer_dropout(rate = 0.2) %>% 
+#  layer_dense(units = 64)%>%
+  #layer_dense(units = 32)%>%
+  layer_dense(units = 1)
+model2 %>% compile(    
+  optimizer = "rmsprop",  
+  loss = "mse",    
+  metrics = c("mae")  )
+early_stop<-callback_early_stopping(monitor="loss",patience=200)
+history<-model2%>% fit(train.x,train.y,
+                      epochs=100,
+                      batch_size =27, #697,
+                      callbacks=list(early_stop),
+                      validation_split=0.3,
+                      #validation_data = list(test.x, test.y),
+                      verbose=1)
+DLTrain_Pred<-model2%>%predict(train.x)
+DLPred<-model2%>%predict(test.x)
+
+
+accuracy(DLPred[,1],test.y)
+
+```
+```{r}
+
+plot(DLPred,axes = FALSE,frame.plot=TRUE)
+lines(test.y)
+axis(side = 1, at=1:length(crude$Date), labels = crude$Date,las=1)
+```
+```{r}
+
+library(keras)
+library(tensorflow)
+#use_condaenv("keras-tf", required = T)
+
+a3=get_xy(train3.ts,500)
+a4=get_xy(valid3.ts,500)
+train1.x=a3[[1]]
+train1.y=a3[[2]]
+
+
+test1.x<-a3[[1]];
+test1.y<-a3[[2]];
+```
+
+```{r}
+model %>%
+  layer_embedding(input_dim = 500, output_dim = 16) %>%
+ # layer_lstm(units = 32,return_sequences = TRUE) %>% 
+ # layer_lstm(units = 32,return_sequences = TRUE) %>%
+ # layer_lstm(units = 32) %>%
+  layer_dense(units = 1)
+```
+
+
+```{r}
+model %>% compile(    
+  optimizer = "rmsprop",  
+  loss = "mse",    
+  metrics = c("mae")  )
+
+early_stop<-callback_early_stopping(monitor="loss",patience=200)
+history<-model%>% fit(train1.x,train1.y,
+                      epochs=200,
+                      batch_size =100, #697,
+                      callbacks=list(early_stop),
+                      validation_split=0.3,
+                      #validation_data = list(test.x, test.y),
+                      verbose=1)
+
+```
+

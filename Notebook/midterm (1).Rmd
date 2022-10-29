@@ -1,0 +1,474 @@
+---
+title: "project Midterm Report"
+output: html_notebook
+---
+
+### Packages & Loading Data
+```{r}
+rm(list = ls())
+library(forecast)
+library(tidyverse)
+library(fable)
+library(zoo)
+library(dplyr)
+library(tsibble)
+library(ISLR)
+library("caret")
+library("pROC")
+spotify.data <- read.csv("Spotifystocks.csv")
+```
+
+```{r}
+head(spotify.data)
+```
+
+### Tsibble
+```{r}
+spotify.tsibble <- spotify.data %>%
+  mutate(Date = as.Date(Date, "%m/%d/%y")) %>%
+  as_tsibble(index=Date)
+  
+```
+
+```{r}
+spotify.tsibble  %>%
+  ggplot(aes(x = Date, y = Open)) +
+  geom_line() +
+  labs(y = "Open Price", x="Date", title="Spotify Open Prices Over Time")
+```
+
+
+```{r}
+install.packages("plotly")
+library('plotly')
+library(quantmod)
+
+getSymbols("AAPL",src='yahoo')
+
+
+```
+
+```{r}
+fig <- spotify.data %>% plot_ly(x = ~Date, type="candlestick",
+          open = ~spotify.data$Open, close = ~spotify.data$Close.Last,
+          high = ~spotify.data$High, low = ~spotify.data$Low) 
+fig <- fig %>% layout(title = "Candlestick Chart")
+fig
+```
+
+```{r}
+days <- c("Mon","Tue","Wed","Thu","Fri")
+ggplot(spotify.data,aes(x = fct_reorder(Day.of.the.Week,Day.of.the.Week))) +
+  geom_bar() +
+  labs(y = "Data Points", x="Day of the Week", title="Data Points by Day of the Week")
+```
+
+```{r}
+library(ggplot2)
+day =  spotify.data %>% group_by(Day.of.the.Week)  %>%
+                    summarise(total_number = sum(Direction),
+                              .groups = 'drop')
+
+plot(day$total_number,ylab = "Data points where stock went up",xlab="Day of the Week",col=1,type = "b",pch=9)
+
+```
+
+
+ARIMA
+```{r}
+train <- spotify.tsibble$Open[1:(0.9*length(spotify.tsibble$Open))]
+
+test <- spotify.tsibble$Open[(0.9*length(spotify.tsibble$Open)+1):length(spotify.tsibble$Open)]
+
+
+
+fit <- auto.arima(train,allowdrift = TRUE,max.p = 15)
+summary(fit)
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+library(caret)
+library(ggplot2)
+mycontrol <- trainControl(method = "timeslice",
+                              initialWindow = 15,
+                              horizon = 1,
+                              fixedWindow = FALSE, 
+                          savePredictions = TRUE)
+myfit <- train(( auto.arima(train,allowdrift = TRUE)),data= train,trControl = mycontrol)
+print(myfit$pred)
+```
+
+
+```{r}
+plot(fit$fitted)
+lines(train,col=3,lty=2)
+legend(x = "topleft",          
+       legend = c("Fitted", "Actual"),  
+       lty = c(1, 2),           
+       col = c(2, 3),           
+       lwd = 1)
+```
+
+
+```{r}
+test_forecast <- forecast(fit,h = length(test))
+
+plot(test_forecast, main = "Arima forecast for Spotify",xaxt="n")
+axis(side = 1, at=1:length(spotify.data$Date), labels = spotify.data$Date,las=1)
+abline(v=891, col="blue")
+```
+
+
+```{r}
+accuracy(test_forecast$mean,test)
+```
+
+
+```{r}
+autoplot(test_forecast)
+
+```
+
+
+```{r}
+plot(fit$residuals,ylab="Forecast Errors")
+```
+
+
+```{r}
+acf(fit$residuals)
+
+```
+
+
+```{r}
+test_forecast
+```
+
+```{r}
+set.seed(100)
+v=0
+m=1:43
+for (i in m) {
+neuralmodel=nnetar(train,p=i)
+print(i)
+nforecast=forecast(neuralmodel,h=length(test))
+j=accuracy(nforecast$mean,test)
+print(j)
+
+}
+```
+
+
+```{r}
+set.seed(100)
+neuralmodel=nnetar(train,p=33)
+nforecast=forecast(neuralmodel,h=length(test))
+```
+
+
+```{r}
+accuracy(nforecast$mean,test)
+```
+
+
+```{r}
+plot(neuralmodel$fitted,lty=2,lwd=3,col=2,xaxt="n")
+lines(train,col=3,lty=1,lwd=1)
+legend(x = "topleft",          
+       legend = c("Fitted", "Actual"),  
+       lty = c(2, 1),           
+       col = c(2, 3),           
+       lwd = 1)
+axis(side = 1, at=1:length(spotify.data$Date), labels = spotify.data$Date,las=1)
+
+```
+
+```{r}
+
+```
+
+```{r}
+autoplot(nforecast,ylab="Stock Prices",col=5)
+```
+
+
+```{r}
+library("keras")
+data=scale(spotify.tsibble$Open)
+
+
+```
+
+
+```{r}
+get_xy<-function(tsdata,NP)
+{
+  N <- length(tsdata)
+  x<-matrix(nrow=N-NP,ncol=NP)
+  y<-rep(0,N-NP)
+  for (i in 1:(N-NP))
+  {
+    x[i,1:NP]<-as.numeric(tsdata[i:(i+NP-1)])
+    y[i]<-as.numeric(tsdata[i+NP])
+  }
+  return(list(x,y))
+}
+
+```
+
+
+```{r}
+a<-get_xy(train,30)
+train.x<-a[[1]]
+train.y<-a[[2]]
+
+
+```
+
+
+```{r}
+b<-get_xy(test,30)
+test.x<-b[[1]]
+test.y<-b[[2]]
+```
+
+
+```{r}
+train1 <- spotify.tsibble$Open[1:(0.9*length(spotify.tsibble$Open))]
+
+test1 <-spotify.tsibble$Open[(0.9*length(spotify.tsibble$Open)+1):length(spotify.tsibble$Open)]
+
+a<-get_xy(train1,13)
+train.x<-a[[1]]
+train.y<-a[[2]]
+
+b<-get_xy(test1,13)
+test.x<-b[[1]]
+test.y<-b[[2]]
+
+model <- keras_model_sequential() %>%    
+  layer_dense(units = 128, activation ="relu",input_shape = c(13)) %>%    
+  layer_dense(units = 128, activation = "relu") %>%  
+  layer_dense(units = 128)%>%
+  layer_dense(units = 128)%>%
+  layer_dense(units = 1)
+
+model %>% compile(    
+  optimizer = "rmsprop",  
+  loss = "mse",    
+  metrics = c("mae")  )
+
+early_stop<-callback_early_stopping(monitor="loss",patience=200)
+history<-model%>% fit(train.x,train.y,
+                      epochs=1000,
+                      batch_size =25, 
+                      validation_split=0.2,
+                      callbacks=list(early_stop),
+                      verbose=0)
+
+DLPred<-model%>%predict(test.x)
+DLPred=ts(DLPred)
+print(accuracy(DLPred,test.y))
+
+
+
+
+
+```
+
+
+```{r}
+result<-model%>%evaluate(test.x,test.y)
+result
+```
+
+
+```{r}
+DLTrain_Pred<-model%>%predict(train.x)
+DLPred<-model%>%predict(test.x)
+observed<-c(train.y,test.y)
+
+predicted<-c(DLTrain_Pred,DLPred)
+
+plot(observed,type="b",lty=1,main="Deep Learning Plot",ylab="Spotify Stock price",xaxt="n")
+lines(predicted,type="b",lty=2,col="red")
+axis(side = 1, at=1:length(spotify.data$Date), labels = spotify.data$Date,las=1)
+abline(v=891, col="blue")
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+plot(DLPred)
+lines(test.y,col="red",lty=2)
+legend(125,2,c("Forecasted","Actual"),col = c("black","red"),lwd=c(1,2))
+```
+
+
+```{r}
+DLPred=ts(DLPred)
+accuracy(DLPred,test.y)
+```
+
+
+```{r}
+train1 <- spotify.tsibble$Open[1:(0.9*length(spotify.tsibble$Open))]
+
+test1 <-spotify.tsibble$Open[(0.9*length(spotify.tsibble$Open)+1):length(spotify.tsibble$Open)]
+m=1:30
+k=c(10,15,20,25,30,35)
+set.seed(101)
+for (i in m) {
+  for (j in k) {
+    
+  
+set.seed(101)
+c<-get_xy(train1,i)
+train1.x<-c[[1]]
+train1.y<-c[[2]]
+
+d<-get_xy(test1,i)
+test1.x<-d[[1]]
+test1.y<-d[[2]]
+
+model <- keras_model_sequential() %>%    
+  layer_dense(units = 64, activation ="relu",input_shape = c(i)) %>% 
+  layer_dense(units = 64, activation = "relu") %>%  
+  layer_dense(units = 64)%>%
+  layer_dense(units = 64)%>%
+  layer_dense(units = 1)
+
+model %>% compile(    
+  optimizer = "rmsprop",
+  loss = "mse",    
+  metrics = c("mae")  )
+
+early_stop<-callback_early_stopping(monitor="loss",patience=200)
+history<-model%>% fit(train1.x,train1.y,
+                      epochs=1000,
+                      batch_size =j, 
+                      callbacks=list(early_stop),
+                      verbose=0)
+print(i)
+print(j)
+DLPred<-model%>%predict(test1.x)
+DLPred=ts(DLPred)
+print(accuracy(DLPred,test1.y))
+}
+}
+  
+```
+
+
+```{r}
+result<-model%>%evaluate(test1.x,test1.y)
+result
+```
+
+
+```{r}
+DLPred<-model%>%predict(test1.x)
+DLPred=ts(DLPred)
+accuracy(DLPred,test1.y)
+
+```
+
+
+```{r}
+j=c(10,15,20,25,30,35,40,45,50,55)
+for (i in j) {
+
+c<-get_xy(train1,11)
+train1.x<-c[[1]]
+train1.y<-c[[2]]
+
+d<-get_xy(test1,11)
+test1.x<-d[[1]]
+test1.y<-d[[2]]
+
+
+
+
+
+model <- keras_model_sequential() %>%    
+  layer_dense(units = 64, activation ="relu",input_shape = c(11)) %>%    
+  layer_dense(units = 32, activation = "relu") %>%  
+  layer_dense(units = 64)%>%
+  layer_dense(units = 32)%>%
+  layer_dense(units = 1)
+
+model %>% compile(    
+  optimizer = "rmsprop",  
+  loss = "mse",    
+  metrics = c("mae")  )
+
+early_stop<-callback_early_stopping(monitor="loss",patience=200)
+history<-model%>% fit(train1.x,train1.y,
+                      epochs=1000,
+                      batch_size =i, 
+                      callbacks=list(early_stop),
+                      verbose=0)
+print(i)
+DLPred<-model%>%predict(test1.x)
+DLPred=ts(DLPred)
+print(accuracy(DLPred,test1.y))
+
+}
+```
+
+
+```{r}
+m=c(15,20,25,30,35,40,45,50,55,60,65,70,75,80,85)
+
+c<-get_xy(train1,14)
+train1.x<-c[[1]]
+train1.y<-c[[2]]
+
+d<-get_xy(test1,14)
+test1.x<-d[[1]]
+test1.y<-d[[2]]
+```
+
+
+```{r}
+model <- keras_model_sequential() %>%    
+  layer_dense(units = 14, activation ="relu",input_shape = c(14)) %>%   
+   layer_dropout(rate = 0.2) %>%
+  layer_dense(units = 32, activation = "relu") %>%  
+  layer_dense(units = 64)%>%
+  layer_dropout(rate = 0.2)%>%
+  layer_dense(units = 32)%>%
+  layer_dense(units = 1)
+
+model %>% compile(    
+  optimizer = "rmsprop",  
+  loss = "mse",    
+  metrics = c("mae")  )
+
+early_stop<-callback_early_stopping(monitor="loss",patience=200)
+history<-model%>% fit(train1.x,train1.y,
+                      epochs=1000,
+                      batch_size =25, 
+                      callbacks=list(early_stop),
+                      verbose=1)
+
+DLPred<-model%>%predict(test1.x)
+DLPred=ts(DLPred)
+print(accuracy(DLPred,test1.y))
+
+
+
+```
+
